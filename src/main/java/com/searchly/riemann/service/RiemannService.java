@@ -26,8 +26,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 /**
- * TODO: change service name to match general Riemann approach - should include more details
- * TODO: cluster health status for single node clusters
  * TODO: Expand metrics recorded? http://radar.oreilly.com/2015/04/10-elasticsearch-metrics-to-watch.html
  */
 public class RiemannService extends AbstractLifecycleComponent<RiemannService> {
@@ -127,13 +125,20 @@ public class RiemannService extends AbstractLifecycleComponent<RiemannService> {
                         transportClusterHealthAction.execute(new ClusterHealthRequest(), new ActionListener<ClusterHealthResponse>() {
                             @Override
                             public void onResponse(ClusterHealthResponse clusterIndexHealths) {
-                                riemannClient.event().host(hostDefinition).service("Cluster Health").description("cluster_health").tags(tags).attributes(attributes)
+                                riemannClient.event().host(hostDefinition).service("elastic search cluster health").description("Elastic Search cluster health").tags(tags)
+                                        .attributes(attributes)
+                                        .attribute("component", "cluster")
+                                        .attribute("measurement", "health")
                                         .state(RiemannUtils.getStateWithClusterInformation(clusterIndexHealths.getStatus().name())).send();
                             }
 
                             @Override
                             public void onFailure(Throwable throwable) {
-                                riemannClient.event().host(hostDefinition).service("Cluster Health").description("cluster_health").tags(tags).attributes(attributes).state("critical").send();
+                                riemannClient.event().host(hostDefinition).service("elastic search cluster health").description("Elastic Search cluster health").tags(tags)
+                                        .attributes(attributes)
+                                        .attribute("component", "cluster")
+                                        .attribute("measurement", "health")
+                                        .state("critical").send();
                             }
                         });
                     }
