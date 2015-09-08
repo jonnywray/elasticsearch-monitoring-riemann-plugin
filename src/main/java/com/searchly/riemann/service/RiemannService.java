@@ -26,7 +26,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 /**
- * TODO: Expand metrics recorded? http://radar.oreilly.com/2015/04/10-elasticsearch-metrics-to-watch.html
  */
 public class RiemannService extends AbstractLifecycleComponent<RiemannService> {
 

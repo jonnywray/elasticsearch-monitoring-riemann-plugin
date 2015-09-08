@@ -13,6 +13,8 @@ import java.util.Map;
 
 /**
  * @author ferhat
+ *
+ * TODO: Expand metrics recorded? http://radar.oreilly.com/2015/04/10-elasticsearch-metrics-to-watch.html
  */
 public class NodeStatsRiemannEvent {
 
