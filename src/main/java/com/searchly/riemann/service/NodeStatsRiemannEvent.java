@@ -40,11 +40,12 @@ public class NodeStatsRiemannEvent {
         this.settings = settings;
         this.tags = tags;
         this.attributes = attributes;
-        this.deltaMap = new HashMap<String, Long>();
+        this.deltaMap = new HashMap<>();
         // init required delta instead of null check
         deltaMap.put("index_rate", 0L);
         deltaMap.put("query_rate", 0L);
         deltaMap.put("fetch_rate", 0L);
+        deltaMap.put("query_time", 0L);
 
     }
 
@@ -57,11 +58,20 @@ public class NodeStatsRiemannEvent {
             long warning = settings.getAsLong("metrics.riemann.heap_ratio.warning", 95L);
             heapRatio(monitorService.jvmService().stats(), ok, warning);
         }
+        if (settings.getAsBoolean("metrics.riemann.heap.enabled", true)) {
+            heap(monitorService.jvmService().stats());
+        }
+        if (settings.getAsBoolean("metrics.riemann.non_heap.enabled", true)) {
+            nonHeap(monitorService.jvmService().stats());
+        }
 
         if (settings.getAsBoolean("metrics.riemann.current_query_rate.enabled", true)) {
             long ok = settings.getAsLong("metrics.riemann.current_query_rate.ok", 50L);
             long warning = settings.getAsLong("metrics.riemann.current_query_rate.warning", 70L);
             currentQueryRate(nodeIndicesStats, ok, warning);
+        }
+        if (settings.getAsBoolean("metrics.riemann.query_time.enabled", true)) {
+            queryTime(nodeIndicesStats);
         }
 
         if (settings.getAsBoolean("metrics.riemann.current_fetch_rate.enabled", true)) {
@@ -74,6 +84,13 @@ public class NodeStatsRiemannEvent {
             long ok = settings.getAsLong("metrics.riemann.current_indexing_rate.ok", 300L);
             long warning = settings.getAsLong("metrics.riemann.current_indexing_rate.warning", 1000L);
             currentIndexingRate(nodeIndicesStats, ok, warning);
+        }
+
+        if (settings.getAsBoolean("metrics.riemann.field_data.enabled", true)) {
+            fieldDataCache(nodeIndicesStats);
+        }
+        if (settings.getAsBoolean("metrics.riemann.filter_cache.enabled", true)) {
+            filterCache(nodeIndicesStats);
         }
 
         if (settings.getAsBoolean("metrics.riemann.total_thread_count.enabled", true)) {
@@ -105,6 +122,9 @@ public class NodeStatsRiemannEvent {
             long warning = settings.getAsLong("metrics.riemann.system_memory_usage.warning", 90L);
             systemMemory(monitorService.osService().stats(), ok, warning);
         }
+        if (settings.getAsBoolean("metrics.riemann.system_cpu.enabled", true)) {
+            systemCpu(monitorService.osService().stats());
+        }
 
         if (settings.getAsBoolean("metrics.riemann.disk_usage.enabled", true)) {
             long ok = settings.getAsLong("metrics.riemann.disk_usage.ok", 80L);
@@ -115,7 +135,7 @@ public class NodeStatsRiemannEvent {
     }
 
     private void currentIndexingRate(NodeIndicesStats nodeIndicesStats, long ok, long warning) {
-        long indexCount = nodeIndicesStats.getIndexing().getTotal().getIndexCount();
+        long indexCount = nodeIndicesStats.getIndexing() == null ? 0 : nodeIndicesStats.getIndexing().getTotal().getIndexCount();
         long delta = deltaMap.get("index_rate");
         long indexingCurrent = indexCount - delta;
         deltaMap.put("index_rate", indexCount);
@@ -143,10 +163,81 @@ public class NodeStatsRiemannEvent {
                 .attribute("component", "JVM statistics")
                 .attribute("measurement", "heap_usage_ratio")
                 .state(RiemannUtils.getState(heapRatio, ok, warning)).metric(heapRatio).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch JVM statistics heap used percentage")
+                .description("Elastic Search heap used percentage")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "JVM statistics")
+                .attribute("measurement", "heap_used_percentage")
+                .state(RiemannUtils.getState(heapRatio, ok, warning)).metric(jvmStats.getMem().getHeapUsedPrecent()).send();
+    }
+
+    private void heap(JvmStats jvmStats) {
+        double heapUsed = jvmStats.getMem().getHeapUsed().getGbFrac();
+        double heapCommitted = jvmStats.getMem().getHeapCommitted().getGbFrac();
+        double heapMax = jvmStats.getMem().getHeapMax().getGbFrac();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch JVM statistics heap used")
+                .description("Elastic Search heap used")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "JVM statistics")
+                .attribute("measurement", "heap_used")
+                .state("ok")
+                .metric(heapUsed).send();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch JVM statistics heap committed")
+                .description("Elastic Search heap committed")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "JVM statistics")
+                .attribute("measurement", "heap_committed")
+                .state("ok")
+                .metric(heapCommitted).send();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch JVM statistics heap max")
+                .description("Elastic Search heap max")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "JVM statistics")
+                .attribute("measurement", "heap_max")
+                .state("ok")
+                .metric(heapMax).send();
+    }
+
+    private void nonHeap(JvmStats jvmStats) {
+        double used = jvmStats.getMem().getNonHeapUsed().getGbFrac();
+        double committed = jvmStats.getMem().getNonHeapCommitted().getGbFrac();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch JVM statistics non-heap used")
+                .description("Elastic Search non-heap used")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "JVM statistics")
+                .attribute("measurement", "non_heap_used")
+                .state("ok")
+                .metric(used).send();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch JVM statistics non-heap committed")
+                .description("Elastic Search non-heap committed")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "JVM statistics")
+                .attribute("measurement", "non_heap_committed")
+                .state("ok")
+                .metric(committed).send();
     }
 
     private void currentQueryRate(NodeIndicesStats nodeIndicesStats, long ok, long warning) {
-        long queryCount = nodeIndicesStats.getSearch().getTotal().getQueryCount();
+        long queryCount = nodeIndicesStats.getSearch() == null ? 0 : nodeIndicesStats.getSearch().getTotal().getQueryCount();
 
         long delta = deltaMap.get("query_rate");
         long queryCurrent = queryCount - delta;
@@ -163,8 +254,79 @@ public class NodeStatsRiemannEvent {
                 .state(RiemannUtils.getState(queryCurrent, ok, warning)).metric(queryCurrent).send();
     }
 
+    private void queryTime(NodeIndicesStats nodeIndicesStats) {
+        long queryTime = nodeIndicesStats.getSearch() == null ? 0 : nodeIndicesStats.getSearch().getTotal().getQueryTimeInMillis();
+        long delta = deltaMap.get("query_time");
+        long queryTimeCurrent = queryTime - delta;
+        deltaMap.put("query_time", queryTime);
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch node statistics current query time")
+                .description("Elastic Search current query time (ms)")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "node statistics")
+                .attribute("measurement", "current_query_time_ms")
+                .state("ok")
+                .metric(queryTimeCurrent).send();
+    }
+
+    private void filterCache(NodeIndicesStats nodeIndicesStats) {
+        long evictions = nodeIndicesStats.getFilterCache() == null ? 0 : nodeIndicesStats.getFilterCache().getEvictions();
+        long size = nodeIndicesStats.getFilterCache() == null ? 0 : nodeIndicesStats.getFilterCache().getMemorySizeInBytes();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch node statistics filter cache size")
+                .description("Elastic Search filter cache size")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "node statistics")
+                .attribute("measurement", "filter cache size")
+                .state("ok")
+                .metric(size).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch node statistics filter cache evictions")
+                .description("Elastic Search filter cache evictions")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "node statistics")
+                .attribute("measurement", "filter cache evictions")
+                .state("ok")
+                .metric(evictions).send();
+    }
+
+    private void fieldDataCache(NodeIndicesStats nodeIndicesStats) {
+        long evictions = nodeIndicesStats.getFieldData() == null ? 0 : nodeIndicesStats.getFieldData().getEvictions();
+        long size = nodeIndicesStats.getFieldData() == null ? 0 : nodeIndicesStats.getFieldData().getMemorySizeInBytes();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch node statistics field data cache size")
+                .description("Elastic Search field data cache size")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "node statistics")
+                .attribute("measurement", "field data cache size")
+                .state("ok")
+                .metric(size).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch node statistics field cache evictions")
+                .description("Elastic Search field cache evictions")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "node statistics")
+                .attribute("measurement", "field cache evictions")
+                .state("ok")
+                .metric(evictions).send();
+    }
+
     private void currentFetchRate(NodeIndicesStats nodeIndicesStats, long ok, long warning) {
-        long fetchCount = nodeIndicesStats.getSearch().getTotal().getFetchCount();
+        long fetchCount = nodeIndicesStats.getSearch() == null ? 0 : nodeIndicesStats.getSearch().getTotal().getFetchCount();
         long delta = deltaMap.get("fetch_rate");
         long fetchCurrent = fetchCount - delta;
         deltaMap.put("fetch_rate", fetchCount);
@@ -242,6 +404,57 @@ public class NodeStatsRiemannEvent {
                 .attribute("component", "system statistics")
                 .attribute("measurement", "system_memory_usage")
                 .state(RiemannUtils.getState(memoryUsedPercentage, ok, warning)).metric(memoryUsedPercentage).send();
+
+    }
+
+    private void systemCpu(OsStats osStats) {
+        short user = osStats.getCpu().getUser();
+        short sys = osStats.getCpu().getSys();
+        short idle = osStats.getCpu().getIdle();
+        short stolen = osStats.getCpu().getStolen();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch system statistics user CPU")
+                .description("Elastic Search system user CPU")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "system statistics")
+                .attribute("measurement", "user_cpu")
+                .state("ok")
+                .metric(user).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch system statistics system CPU")
+                .description("Elastic Search system CPU")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "system statistics")
+                .attribute("measurement", "system_cpu")
+                .state("ok")
+                .metric(sys).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch system statistics idle CPU")
+                .description("Elastic Search system idle CPU")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "system statistics")
+                .attribute("measurement", "idle_cpu")
+                .state("ok")
+                .metric(idle).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch system statistics stolen CPU")
+                .description("Elastic Search system stolen CPU")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "system statistics")
+                .attribute("measurement", "stolen_cpu")
+                .state("ok")
+                .metric(stolen).send();
 
     }
 
