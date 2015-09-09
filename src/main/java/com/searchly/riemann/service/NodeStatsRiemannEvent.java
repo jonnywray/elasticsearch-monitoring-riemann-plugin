@@ -132,6 +132,10 @@ public class NodeStatsRiemannEvent {
             systemFile(monitorService.fsService().stats(), ok, warning);
         }
 
+        if (settings.getAsBoolean("metrics.riemann.disk_io.enabled", true)) {
+            systemFileIO(monitorService.fsService().stats());
+        }
+
     }
 
     private void currentIndexingRate(NodeIndicesStats nodeIndicesStats, long ok, long warning) {
@@ -402,7 +406,7 @@ public class NodeStatsRiemannEvent {
                 .tags(tags)
                 .attributes(attributes)
                 .attribute("component", "system statistics")
-                .attribute("measurement", "system_memory_usage")
+                .attribute("measurement", "memory_usage")
                 .state(RiemannUtils.getState(memoryUsedPercentage, ok, warning)).metric(memoryUsedPercentage).send();
 
     }
@@ -465,13 +469,37 @@ public class NodeStatsRiemannEvent {
             long usageRatio = ((total - free) * 100) / total;
             riemannClient.event()
                     .host(hostDefinition)
-                    .service("elasticsearch system statistics disk usage")
+                    .service("elasticsearch system statistics disk usage "+info.getMount())
                     .description("Elastic Search system disk usage")
                     .tags(tags)
                     .attributes(attributes)
                     .attribute("component", "system statistics")
-                    .attribute("measurement", "system_disk_usage")
+                    .attribute("measurement", "disk_usage "+info.getMount())
                     .state(RiemannUtils.getState(usageRatio, ok, warning)).metric(usageRatio).send();
         }
+    }
+
+    private void systemFileIO(FsStats fsStats) {
+        long diskReads = fsStats.getTotal().getDiskReads();
+        long diskWrites = fsStats.getTotal().getDiskWrites();
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch system statistics disk reads")
+                .description("Elastic Search system disk reads")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "system statistics")
+                .attribute("measurement", "disk_reads")
+                .metric(diskReads).send();
+
+        riemannClient.event()
+                .host(hostDefinition)
+                .service("elasticsearch system statistics disk writes")
+                .description("Elastic Search system disk writes")
+                .tags(tags)
+                .attributes(attributes)
+                .attribute("component", "system statistics")
+                .attribute("measurement", "disk_writes")
+                .metric(diskWrites).send();
     }
 }
