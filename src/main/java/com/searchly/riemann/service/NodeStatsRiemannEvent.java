@@ -4,9 +4,7 @@ import com.aphyr.riemann.client.RiemannClient;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.indices.NodeIndicesStats;
 import org.elasticsearch.monitor.MonitorService;
-import org.elasticsearch.monitor.fs.FsStats;
 import org.elasticsearch.monitor.jvm.JvmStats;
-import org.elasticsearch.monitor.os.OsStats;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,7 +12,7 @@ import java.util.Map;
 /**
  * @author ferhat
  *
- * TODO: Expand metrics recorded? http://radar.oreilly.com/2015/04/10-elasticsearch-metrics-to-watch.html
+ * TODO: Expand elastic search metrics recorded? http://radar.oreilly.com/2015/04/10-elasticsearch-metrics-to-watch.html
  */
 public class NodeStatsRiemannEvent {
 
@@ -52,7 +50,6 @@ public class NodeStatsRiemannEvent {
     public void sendEvents(MonitorService monitorService, NodeIndicesStats nodeIndicesStats) {
 
         //JVM
-        //mem
         if (settings.getAsBoolean("metrics.riemann.heap_ratio.enabled", true)) {
             long ok = settings.getAsLong("metrics.riemann.heap_ratio.ok", 85L);
             long warning = settings.getAsLong("metrics.riemann.heap_ratio.warning", 95L);
@@ -64,7 +61,13 @@ public class NodeStatsRiemannEvent {
         if (settings.getAsBoolean("metrics.riemann.non_heap.enabled", true)) {
             nonHeap(monitorService.jvmService().stats());
         }
+        if (settings.getAsBoolean("metrics.riemann.total_thread_count.enabled", true)) {
+            long ok = settings.getAsLong("metrics.riemann.total_thread_count.ok", 150L);
+            long warning = settings.getAsLong("metrics.riemann.total_thread_count.warning", 200L);
+            totalThreadCount(monitorService.jvmService().stats(), ok, warning);
+        }
 
+        // ES node
         if (settings.getAsBoolean("metrics.riemann.current_query_rate.enabled", true)) {
             long ok = settings.getAsLong("metrics.riemann.current_query_rate.ok", 50L);
             long warning = settings.getAsLong("metrics.riemann.current_query_rate.warning", 70L);
@@ -92,50 +95,6 @@ public class NodeStatsRiemannEvent {
         if (settings.getAsBoolean("metrics.riemann.filter_cache.enabled", true)) {
             filterCache(nodeIndicesStats);
         }
-
-        if (settings.getAsBoolean("metrics.riemann.total_thread_count.enabled", true)) {
-            long ok = settings.getAsLong("metrics.riemann.total_thread_count.ok", 150L);
-            long warning = settings.getAsLong("metrics.riemann.total_thread_count.warning", 200L);
-            totalThreadCount(monitorService.jvmService().stats(), ok, warning);
-        }
-
-        if (settings.getAsBoolean("metrics.riemann.system_load.enabled", true)) {
-            long ok = settings.getAsLong("metrics.riemann.system_load.ok", 2L);
-            long warning = settings.getAsLong("metrics.riemann.system_load.warning", 5L);
-            systemLoadOne(monitorService.osService().stats(), ok, warning);
-        }
-
-        if (settings.getAsBoolean("metrics.riemann.system_load_5m.enabled", true)) {
-            long ok = settings.getAsLong("metrics.riemann.system_load_5m.ok", 2L);
-            long warning = settings.getAsLong("metrics.riemann.system_load_5m.warning", 5L);
-            systemLoadFive(monitorService.osService().stats(), ok, warning);
-        }
-
-        if (settings.getAsBoolean("metrics.riemann.system_load_15m.enabled", true)) {
-            long ok = settings.getAsLong("metrics.riemann.system_load_15m.ok", 2L);
-            long warning = settings.getAsLong("metrics.riemann.system_load_15m.warning", 5L);
-            systemLoadFifteen(monitorService.osService().stats(), ok, warning);
-        }
-
-        if (settings.getAsBoolean("metrics.riemann.system_memory_usage.enabled", true)) {
-            long ok = settings.getAsLong("metrics.riemann.system_memory_usage.ok", 80L);
-            long warning = settings.getAsLong("metrics.riemann.system_memory_usage.warning", 90L);
-            systemMemory(monitorService.osService().stats(), ok, warning);
-        }
-        if (settings.getAsBoolean("metrics.riemann.system_cpu.enabled", true)) {
-            systemCpu(monitorService.osService().stats());
-        }
-
-        if (settings.getAsBoolean("metrics.riemann.disk_usage.enabled", true)) {
-            long ok = settings.getAsLong("metrics.riemann.disk_usage.ok", 80L);
-            long warning = settings.getAsLong("metrics.riemann.disk_usage.warning", 90L);
-            systemFile(monitorService.fsService().stats(), ok, warning);
-        }
-
-        if (settings.getAsBoolean("metrics.riemann.disk_io.enabled", true)) {
-            systemFileIO(monitorService.fsService().stats());
-        }
-
     }
 
     private void currentIndexingRate(NodeIndicesStats nodeIndicesStats, long ok, long warning) {
@@ -356,150 +315,5 @@ public class NodeStatsRiemannEvent {
                 .attribute("component", "JVM statistics")
                 .attribute("measurement", "total_thread_count")
                 .state(RiemannUtils.getState(threadCount, ok, warning)).metric(threadCount).send();
-    }
-
-    private void systemLoadOne(OsStats osStats, long ok, long warning) {
-        double[] systemLoad = osStats.getLoadAverage();
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics system load (1m)")
-                .description("Elastic Search 1m system load")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "system_load_1m")
-                .state(RiemannUtils.getState((long) systemLoad[0], ok, warning)).metric(systemLoad[0]).send();
-    }
-
-    private void systemLoadFive(OsStats osStats, long ok, long warning) {
-        double[] systemLoad = osStats.getLoadAverage();
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics system load (5m)")
-                .description("Elastic Search 5m system load")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "system_load_5m")
-                .state(RiemannUtils.getState((long) systemLoad[1], ok, warning)).metric(systemLoad[1]).send();
-    }
-
-    private void systemLoadFifteen(OsStats osStats, long ok, long warning) {
-        double[] systemLoad = osStats.getLoadAverage();
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics system load (15m)")
-                .description("Elastic Search 15m system load")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "system_load_15m")
-                .state(RiemannUtils.getState((long) systemLoad[2], ok, warning)).metric(systemLoad[2]).send();
-    }
-
-    private void systemMemory(OsStats osStats, long ok, long warning) {
-        short memoryUsedPercentage = osStats.getMem().getUsedPercent();
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics system memory usage")
-                .description("Elastic Search system memory usage")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "memory_usage")
-                .state(RiemannUtils.getState(memoryUsedPercentage, ok, warning)).metric(memoryUsedPercentage).send();
-
-    }
-
-    private void systemCpu(OsStats osStats) {
-        short user = osStats.getCpu().getUser();
-        short sys = osStats.getCpu().getSys();
-        short idle = osStats.getCpu().getIdle();
-        short stolen = osStats.getCpu().getStolen();
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics user CPU")
-                .description("Elastic Search system user CPU")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "user_cpu")
-                .state("ok")
-                .metric(user).send();
-
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics system CPU")
-                .description("Elastic Search system CPU")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "system_cpu")
-                .state("ok")
-                .metric(sys).send();
-
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics idle CPU")
-                .description("Elastic Search system idle CPU")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "idle_cpu")
-                .state("ok")
-                .metric(idle).send();
-
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics stolen CPU")
-                .description("Elastic Search system stolen CPU")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "stolen_cpu")
-                .state("ok")
-                .metric(stolen).send();
-
-    }
-
-    private void systemFile(FsStats fsStats, long ok, long warning) {
-        for (FsStats.Info info : fsStats) {
-            long free = info.getFree().getBytes();
-            long total = info.getTotal().getBytes();
-            long usageRatio = ((total - free) * 100) / total;
-            riemannClient.event()
-                    .host(hostDefinition)
-                    .service("elasticsearch system statistics disk usage "+info.getMount())
-                    .description("Elastic Search system disk usage")
-                    .tags(tags)
-                    .attributes(attributes)
-                    .attribute("component", "system statistics")
-                    .attribute("measurement", "disk_usage "+info.getMount())
-                    .state(RiemannUtils.getState(usageRatio, ok, warning)).metric(usageRatio).send();
-        }
-    }
-
-    private void systemFileIO(FsStats fsStats) {
-        long diskReads = fsStats.getTotal().getDiskReads();
-        long diskWrites = fsStats.getTotal().getDiskWrites();
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics disk reads")
-                .description("Elastic Search system disk reads")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "disk_reads")
-                .metric(diskReads).send();
-
-        riemannClient.event()
-                .host(hostDefinition)
-                .service("elasticsearch system statistics disk writes")
-                .description("Elastic Search system disk writes")
-                .tags(tags)
-                .attributes(attributes)
-                .attribute("component", "system statistics")
-                .attribute("measurement", "disk_writes")
-                .metric(diskWrites).send();
     }
 }
